@@ -5,6 +5,9 @@ import './App.css'
 
 function App() {
   const [session, setSession] = useState(null)
+  const [inviteToken, setInviteToken] = useState(
+  new URLSearchParams(window.location.search).get('invite') || ''
+)
   const [familyId, setFamilyId] = useState(null)
   const [items, setItems] = useState([])
   const [page, setPage] = useState('tasks')
@@ -14,6 +17,8 @@ function App() {
   const [inputText, setInputText] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -125,12 +130,96 @@ function App() {
           password,
         })
 
+        
         if (error) throw error
+
+        if (inviteToken) {
+          await handleAcceptInvitation()
+        }
+
       }
     } catch (error) {
       setMessage(error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleAcceptInvitation() {
+    if (!inviteToken) return
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+
+    if (!accessToken) {
+      setMessage('Please sign in with the invited email address to accept your invitation.')
+      return
+    }
+
+    setLoading(true)
+    setMessage('')
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'accept-invitation',
+        {
+          body: { token: inviteToken },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      )
+
+      if (error) throw error
+
+      setMessage(data?.message || 'Invitation accepted successfully!')
+      setInviteToken('')
+      window.location.reload()
+      window.history.replaceState({}, '', '/')
+    } catch (error) {
+      setMessage(error.message || 'Could not accept the invitation.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleInvite(e) {
+    e.preventDefault()
+    setMessage('')
+
+    if (!inviteEmail.trim() || !familyId) {
+      setMessage('Please enter an email address and make sure your family is loaded.')
+      return
+    }
+
+    setInviteLoading(true)
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
+
+      if (!accessToken) {
+        throw new Error('Please sign in again.')
+      }
+
+      const { data, error } = await supabase.functions.invoke('swift-processor', {
+        body: {
+          email: inviteEmail.trim(),
+          familyId: familyId,
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (error) throw error
+
+      setMessage(data?.message || 'Invitation request sent.')
+      setInviteEmail('')
+    } catch (error) {
+      setMessage(error.message || 'Could not send the invitation.')
+    } finally {
+      setInviteLoading(false)
     }
   }
 
@@ -254,7 +343,15 @@ function App() {
               }}
             >
               ✓ To-do list
-            </button>
+            </button><button
+  className={page === 'invite' ? 'active' : ''}
+  onClick={() => {
+    setPage('invite')
+    setMessage('')
+  }}
+>
+  ✉️ Invite family
+</button>
             <button
               className={!isTasks ? 'active' : ''}
               onClick={() => {
@@ -267,7 +364,32 @@ function App() {
             </button>
           </nav>
 
-          <section className="panel">
+          
+{page === 'invite' ? (
+  <section className="panel">
+    <h1>Invite family</h1>
+    <p className="subtitle">
+      Invite your family to share your to-do and shopping lists.
+    </p>
+
+    <form onSubmit={handleInvite} className="add-form">
+      <input
+        type="email"
+        value={inviteEmail}
+        onChange={e => setInviteEmail(e.target.value)}
+        placeholder="Enter family member's email..."
+        required
+      />
+      <button type="submit" disabled={inviteLoading}>
+        {inviteLoading ? 'Sending...' : 'Send invitation'}
+      </button>
+    </form>
+
+    {message && <p>{message}</p>}
+  </section>
+) : (
+  <section className="panel">
+
             <h1>{isTasks ? 'Family to-do list' : 'Family shopping list'}</h1>
             <p className="subtitle">
               {isTasks
@@ -320,9 +442,10 @@ function App() {
             )}
 
             <button onClick={refreshItems}>Refresh list</button>
-          </section>
+</section>
+)}
 
-          <button onClick={handleSignOut}>Sign out</button>
+<button onClick={handleSignOut}>Sign out</button>
         </>
       )}
 
