@@ -18,6 +18,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLink, setInviteLink] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
 
   useEffect(() => {
@@ -174,7 +175,6 @@ function App() {
 
       setMessage(data?.message || 'Invitation accepted successfully!')
       setInviteToken('')
-      window.location.reload()
       window.history.replaceState({}, '', '/')
     } catch (error) {
       setMessage(error.message || 'Could not accept the invitation.')
@@ -212,9 +212,37 @@ function App() {
         },
       })
 
-      if (error) throw error
+      
+    
+if (error) {
+  console.error('Invitation error:', error)
 
-      setMessage(data?.message || 'Invitation request sent.')
+  const response = error.context
+
+  if (response) {
+    try {
+      const details = await response.clone().json()
+      console.error('Server error details:', details)
+
+      throw new Error(
+        details.error || error.message || 'Could not send the invitation.'
+      )
+    } catch (readError) {
+      if (readError.message !== error.message) {
+        throw readError
+      }
+    }
+  }
+
+  throw new Error(
+    error.message || 'Could not send the invitation.'
+  )
+}
+
+
+      setMessage(data?.message || 'Invitation link created.')
+setInviteLink(data?.invitationUrl || '')
+
       setInviteEmail('')
     } catch (error) {
       setMessage(error.message || 'Could not send the invitation.')
@@ -280,7 +308,7 @@ function App() {
   return (
     <main className="app">
       <header className="header">
-        <div className="logo">🏡 HomeTogether</div>
+        <div className="logo">🏡 Puencha</div>
         <p>One family. One place. Everything organised.</p>
       </header>
 
@@ -325,7 +353,7 @@ function App() {
         </section>
       ) : !familyId ? (
         <section className="panel">
-          <h1>Welcome to HomeTogether!</h1>
+          <h1>Welcome to Puencha!</h1>
           <p>{message || 'Finding your family...'}</p>
           <button onClick={handleSignOut}>Sign out</button>
         </section>
@@ -384,6 +412,27 @@ function App() {
         {inviteLoading ? 'Sending...' : 'Send invitation'}
       </button>
     </form>
+    
+    {inviteLink && (
+      <div className="invitation-link">
+        <p>Share this invitation link with your family member:</p>
+        <input
+          type="text"
+          value={inviteLink}
+          readOnly
+        />
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(inviteLink)
+            setMessage('Invitation link copied!')
+          }}
+        >
+          Copy invitation link
+        </button>
+      </div>
+    )}
+
 
     {message && <p>{message}</p>}
   </section>
